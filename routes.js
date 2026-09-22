@@ -18,13 +18,57 @@ function addDays(dateString, offsetDays) {
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
+function getCookie(req, name) {
+  const header = req.headers.cookie || '';
+  for (const part of header.split(';')) {
+    const [key, ...valueParts] = part.trim().split('=');
+    if (key === name) return decodeURIComponent(valueParts.join('='));
+  }
+  return null;
+}
+
+function setAuthCookie(res, token) {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `jivak_session=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax${secure}`);
+}
+
+function clearAuthCookie(res) {
+  res.setHeader('Set-Cookie', 'jivak_session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax');
+}
+
+function userFromToken(token) {
+  if (!token) return null;
+  try {
+    return jwt.verify(token, cfg.JWT_SECRET);
+  } catch {
+    return null;
+  }
+}
+
 router.post('/auth/login', (req, res) => {
   const { username, password } = req.body;
   if (username === cfg.DOCTOR_USERNAME && password === cfg.DOCTOR_PASSWORD) {
     const token = jwt.sign({ username }, cfg.JWT_SECRET, { expiresIn: '30d' });
+    setAuthCookie(res, token);
+    // Preserve cookie-based authentication while supporting frontend builds
+    // that send the token back in an Authorization header.
     return res.json({ token, user: { username, name: cfg.DOCTOR_NAME || username } });
   }
   res.status(401).json({ error: 'Invalid username or password.' });
+});
+
+router.get('/auth/session', (req, res) => {
+  const payload = userFromToken(getCookie(req, 'jivak_session'));
+  if (!payload) {
+    clearAuthCookie(res);
+    return res.status(401).json({ error: 'Not authenticated.' });
+  }
+  res.json({ user: { username: payload.username, name: cfg.DOCTOR_NAME || payload.username } });
+});
+
+router.post('/auth/logout', (req, res) => {
+  clearAuthCookie(res);
+  res.json({ ok: true });
 });
 
 // ── PATIENTS ──────────────────────────────────────────────────────────────────
@@ -106,7 +150,7 @@ router.get('/visits', auth, (req, res) => {
 
 router.post('/visits', auth, (req, res) => {
   const {
-    patient_id, visit_date, complaints, diagnosis, notes, consultation_fee,
+    patient_id, visit_date, complaints, diagnosis, notes, consultation_fee, payment_method,
     bp, bsl, temp, weight, followup_required, prescription_items
   } = req.body;
   if (!patient_id) return res.status(400).json({ error: 'Patient required.' });
@@ -117,6 +161,7 @@ router.post('/visits', auth, (req, res) => {
 
     const vdate = visit_date || localDate();
     const followupDate = followup_required ? addDays(vdate, 7) : null;
+    const paymentMethod = payment_method === 'upi' ? 'upi' : 'cash';
 
     const visitId = db.transaction(() => {
       const items = [];
@@ -146,25 +191,16 @@ router.post('/visits', auth, (req, res) => {
 
       db.run(
         `INSERT INTO visits
-          (patient_id,visit_date,complaints,diagnosis,notes,consultation_fee,bp,bsl,temp,weight,followup_required,followup_date)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+          (patient_id,visit_date,complaints,diagnosis,notes,consultation_fee,payment_method,bp,bsl,temp,weight,followup_required,followup_date)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [patient_id, vdate, complaints || null, diagnosis || null, notes || null, Number(consultation_fee) || 0,
-         bp || null, bsl || null, temp || null, weight || null, followup_required ? 1 : 0, followupDate]
+         paymentMethod, bp || null, bsl || null, temp || null, weight || null, followup_required ? 1 : 0, followupDate]
       );
       const id = db.lastId();
 
-      let mrdNumber = patient.mrd_number;
-      if (!mrdNumber) {
-        const prefix = `MRD-${vdate.slice(0, 7).replace('-', '')}-`;
-        const rows = db.all('SELECT mrd_number FROM patients WHERE mrd_number LIKE ?', [`${prefix}%`]);
-        const next = rows.reduce((max, row) => {
-          const n = parseInt(String(row.mrd_number).slice(prefix.length), 10);
-          return Number.isFinite(n) && n > max ? n : max;
-        }, 0) + 1;
-        mrdNumber = prefix + String(next).padStart(4, '0');
-        db.run('UPDATE patients SET mrd_number=? WHERE id=?', [mrdNumber, patient_id]);
-      }
-
+      // An MRD identifies one consultation, not the patient. Using the new
+      // visit ID makes it unique even when a patient returns on the same day.
+      const mrdNumber = `MRD-${vdate.replace(/-/g, '')}-${String(id).padStart(6, '0')}`;
       const seq = db.get(
         "SELECT COALESCE(MAX(visit_seq),0) AS max_seq FROM visits WHERE substr(visit_date,1,7)=?",
         [vdate.slice(0, 7)]

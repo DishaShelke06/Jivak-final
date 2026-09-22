@@ -1,8 +1,19 @@
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../config');
 
+function cookieToken(req) {
+  const header = req.headers.cookie || '';
+  for (const part of header.split(';')) {
+    const [key, ...valueParts] = part.trim().split('=');
+    if (key === 'jivak_session') return decodeURIComponent(valueParts.join('='));
+  }
+  return null;
+}
+
 module.exports = (req, res, next) => {
-  const token = (req.headers['authorization'] || '').split(' ')[1];
+  const authHeader = req.headers.authorization || '';
+  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const token = cookieToken(req) || bearerToken;
   // `Bearer ${token}` when token is null/undefined literally sends the
   // string "null"/"undefined" — that's truthy, so it used to slip past
   // this check and reach jwt.verify(), which then throws and got

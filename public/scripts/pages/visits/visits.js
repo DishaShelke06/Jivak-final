@@ -5,6 +5,13 @@
   let patients = [];
   let inventory = [];
 
+  // This page has its own formatter because page scripts do not share scope.
+  function visitMrdCode(visit) {
+    if (!visit.visitSeq) return visit.mrdNumber || '';
+    const month = (visit.date || '').slice(0, 7).replace('-', '');
+    return `MRD-${month}-${String(visit.visitSeq).padStart(4, '0')}`;
+  }
+
   function normalizeVisit(v) {
     return {
       id: String(v.id),
@@ -16,6 +23,7 @@
       visitSeq: v.visit_seq,
       date: v.visit_date || '',
       fee: Number(v.consultation_fee || 0),
+      paymentMethod: v.payment_method || 'cash',
       bp: v.bp || '',
       bsl: v.bsl || '',
       temp: v.temp || '',
@@ -135,6 +143,7 @@
         <td><span class="patient-name">${safe(v.patientName)}</span><span class="patient-id">${safe(visitMrdCode(v))} · ${safe(v.patientCode || `JIV-${v.id}`)}</span></td>
         <td><span class="patient-name">${safe(v.diagnosis)}</span><span class="patient-id">${safe(v.complaints)}</span></td>
         <td>${currency(v.fee)}</td>
+        <td>${v.paymentMethod === 'upi' ? 'UPI / online' : 'Cash'}</td>
         <td><div class="row-actions"><button class="link-button" data-view-visit="${v.id}">View prescription</button></div></td>
       </tr>`).join('');
     $('#visitEmptyState').hidden = visits.length > 0;
@@ -357,6 +366,7 @@
         diagnosis: $('#diagnosis').value.trim(),
         notes: $('#instructions').value.trim(),
         consultation_fee: Number($('#visitFee').value) || 0,
+        payment_method: $('#paymentMethod').value,
         bp: $('#visitBP').value.trim(),
         bsl: $('#visitBSL').value.trim(),
         temp: $('#visitTemp').value.trim(),

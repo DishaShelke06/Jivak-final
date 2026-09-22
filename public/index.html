@@ -170,7 +170,7 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Date</th><th>Patient</th><th>Complaints / diagnosis</th><th>Consultation fee</th><th><span class="sr-only">Actions</span></th></tr></thead>
+            <thead><tr><th>Date</th><th>Patient</th><th>Complaints / diagnosis</th><th>Consultation fee</th><th>Payment</th><th><span class="sr-only">Actions</span></th></tr></thead>
             <tbody id="visitTableBody"></tbody>
           </table>
           <div class="empty-state" id="visitEmptyState">
@@ -584,6 +584,7 @@
       <label class="field full">Patient <span>*</span><select id="visitPatient" required><option value="" disabled selected>Select a patient</option></select></label>
       <label class="field">Date of visit <span>*</span><input id="visitDate" type="date" required></label>
       <label class="field">Consultation fee <span>*</span><input id="visitFee" type="number" min="0" step="0.01" required placeholder="e.g. 500"></label>
+      <label class="field">Payment method <span>*</span><select id="paymentMethod" required><option value="cash">Cash</option><option value="upi">UPI / online</option></select></label>
       <!-- Vitals -->
       <label class="field">BP <input id="visitBP" placeholder="e.g. 120/80" maxlength="20"></label>
       <label class="field">BSL <input id="visitBSL" placeholder="e.g. 110 mg/dL" maxlength="20"></label>

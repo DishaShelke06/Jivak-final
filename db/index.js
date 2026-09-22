@@ -75,6 +75,7 @@ async function initDb() {
       diagnosis TEXT,
       notes TEXT,
       consultation_fee REAL NOT NULL DEFAULT 0,
+      payment_method TEXT NOT NULL DEFAULT 'cash' CHECK(payment_method IN ('cash','upi')),
       bp TEXT,
       bsl TEXT,
       temp TEXT,
@@ -198,6 +199,12 @@ async function initDb() {
   // Set this after schema creation as well so foreign-key enforcement is
   // definitely enabled for every subsequent write connection state.
   db.run('PRAGMA foreign_keys = ON;');
+
+  // Existing clinic databases need this migration only once. Older records
+  // are safely classified as cash because that was the former implicit value.
+  try {
+    db.run("ALTER TABLE visits ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash' CHECK(payment_method IN ('cash','upi'))");
+  } catch {}
 
   save();
   console.log('Database ready.');
